@@ -1,6 +1,7 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
 from .models import Document, ExtractedText, DocumentChunk
 from .serializers import DocumentUploadSerializer, DocumentListSerializer
 from .processor import process_document
@@ -9,39 +10,60 @@ from .processor import process_document
 class DocumentUploadView(APIView):
     """Upload a new document and automatically extract text"""
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         file = request.FILES.get('file')
 
+        # Validate file exists
         if not file:
             return Response(
-                {'error': 'No file provided.'},
+                {'error': 'No file provided. Please attach a PDF file.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not file.name.endswith('.pdf'):
+        # Validate file type
+        if not file.name.lower().endswith('.pdf'):
             return Response(
-                {'error': 'Only PDF files are allowed.'},
+                {'error': 'Invalid file type. Only PDF files are allowed.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        title = request.data.get('title', file.name)
+        # Validate file size (max 10MB)
+        max_size = 10 * 1024 * 1024
+        if file.size > max_size:
+            return Response(
+                {'error': 'File too large. Maximum size is 10MB.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        document = Document.objects.create(
-            owner=request.user,
-            title=title,
-            file=file,
-            file_size=file.size,
-        )
+        title = request.data.get('title', file.name).strip()
+        if not title:
+            title = file.name
 
-        # Automatically extract text and chunk after upload
-        success = process_document(document.id)
-        print(f"Processing result: {success}")  # add this line
+        try:
+            document = Document.objects.create(
+                owner=request.user,
+                title=title,
+                file=file,
+                file_size=file.size,
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to save document: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-
-        # ✅ This is the fix — refresh object from DB
-        # so is_processed shows the updated value
-        document.refresh_from_db()
+        # Process the document
+        try:
+            success = process_document(document.id)
+            document.refresh_from_db()
+        except Exception as e:
+            document.delete()
+            return Response(
+                {'error': f'Failed to process document: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         serializer = DocumentUploadSerializer(document)
         return Response(
@@ -74,6 +96,13 @@ class DocumentDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return Document.objects.filter(owner=self.request.user)
 
+    def get_object(self):
+        try:
+            return super().get_object()
+        except Exception:
+            from rest_framework.exceptions import NotFound
+            raise NotFound('Document not found or access denied.')
+
 
 class DocumentExtractedTextView(APIView):
     """View extracted text of a document"""
@@ -92,6 +121,13 @@ class DocumentExtractedTextView(APIView):
             )
 
         pages = ExtractedText.objects.filter(document=document)
+
+        if not pages.exists():
+            return Response(
+                {'error': 'No extracted text found for this document.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         data = [
             {
                 'page_number': page.page_number,
@@ -124,40 +160,12 @@ class DocumentChunksView(APIView):
             )
 
         chunks = DocumentChunk.objects.filter(document=document)
-        data = [
-            {
-                'chunk_index': chunk.chunk_index,
-                'page_number': chunk.page_number,
-                'word_count': len(chunk.text.split()),
-                'preview': chunk.text[:200] + '...'
-            }
-            for chunk in chunks
-        ]
 
-        return Response({
-            'document': document.title,
-            'total_chunks': chunks.count(),
-            'chunks': data
-        })
-
-class DocumentChunksView(APIView):
-    """Preview chunks created from a document (for debugging)"""
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, pk):
-        try:
-            document = Document.objects.get(
-                id=pk,
-                owner=request.user
-            )
-        except Document.DoesNotExist:
+        if not chunks.exists():
             return Response(
-                {'error': 'Document not found.'},
+                {'error': 'No chunks found. Document may not be processed yet.'},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        from .models import DocumentChunk
-        chunks = DocumentChunk.objects.filter(document=document)
 
         data = [
             {
