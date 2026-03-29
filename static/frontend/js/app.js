@@ -1,6 +1,4 @@
-
 // ── Auth Guard ─────────────────────────────────
-// Redirect to login if no token found
 const token = localStorage.getItem('access_token');
 const username = localStorage.getItem('username') || 'User';
 
@@ -8,9 +6,8 @@ if (!token) {
     window.location.href = '/login';
 } else {
     const appEl = document.getElementById('app');
-    if (appEl) {
-        appEl.style.display = 'flex';
-    }
+    if (appEl) appEl.style.display = 'flex';
+
     const userDisplay = document.getElementById('usernameDisplay');
     const userAvatar = document.getElementById('userAvatar');
     if (userDisplay) userDisplay.textContent = username;
@@ -23,23 +20,19 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
         'Content-Type': 'application/json'
     };
-
     const options = { method, headers };
     if (body) options.body = JSON.stringify(body);
 
     const response = await fetch(`${API_BASE}${endpoint}`, options);
-
-    // If token expired, redirect to login
     if (response.status === 401) {
         localStorage.clear();
-        window.location.href = 'login.html';
+        window.location.href = '/login';
         return null;
     }
-
     return response;
 }
 
-// ── Load Documents in Sidebar ──────────────────
+// ── Load Documents ─────────────────────────────
 async function loadDocuments() {
     try {
         const response = await apiCall('/documents/');
@@ -56,10 +49,10 @@ async function loadDocuments() {
         }
 
         docList.innerHTML = docs.map(doc => `
-            <div class="doc-item" title="${doc.title}">
+            <div class="doc-item" title="${escapeHtml(doc.title)}">
                 <span class="doc-item-icon">📄</span>
                 <div>
-                    <div class="doc-item-name">${doc.title}</div>
+                    <div class="doc-item-name">${escapeHtml(doc.title)}</div>
                     <div class="doc-item-size">
                         ${formatFileSize(doc.file_size)} ·
                         ${doc.is_processed ? '✅ Ready' : '⏳ Processing'}
@@ -73,7 +66,7 @@ async function loadDocuments() {
     }
 }
 
-// ── Load Chat History in Sidebar ───────────────
+// ── Load History ───────────────────────────────
 async function loadHistory() {
     try {
         const response = await apiCall('/qa/history/?limit=10');
@@ -104,21 +97,209 @@ async function loadHistory() {
     }
 }
 
-// ── Helper: Load Question from History ─────────
 function loadHistoryQuestion(question) {
     document.getElementById('questionInput').value = question;
     document.getElementById('questionInput').focus();
 }
 
-// ── Sidebar Toggle (Mobile) ────────────────────
+// ── Send Question ──────────────────────────────
+async function sendQuestion() {
+    const input = document.getElementById('questionInput');
+    const question = input.value.trim();
+
+    if (!question) return;
+
+    // Hide welcome screen on first message
+    const welcomeScreen = document.getElementById('welcomeScreen');
+    if (welcomeScreen) welcomeScreen.style.display = 'none';
+
+    // Clear input
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Disable send button
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+
+    // Show user message
+    appendUserMessage(question);
+
+    // Show typing indicator
+    const typingId = showTypingIndicator();
+
+    try {
+        const response = await apiCall('/qa/ask/', 'POST', { question });
+
+        // Remove typing indicator
+        removeTypingIndicator(typingId);
+
+        if (!response) return;
+
+        const data = await response.json();
+
+        if (response.ok) {
+            appendAIMessage(data.answer, data.sources);
+            // Refresh history sidebar
+            loadHistory();
+        } else {
+            appendErrorMessage(data.error || 'Something went wrong.');
+        }
+
+    } catch (error) {
+        removeTypingIndicator(typingId);
+        appendErrorMessage('Cannot connect to server. Make sure Django is running.');
+    } finally {
+        sendBtn.disabled = false;
+    }
+}
+
+// ── Append User Message ────────────────────────
+function appendUserMessage(text) {
+    const container = document.getElementById('messagesContainer');
+    const initial = username.charAt(0).toUpperCase();
+
+    const div = document.createElement('div');
+    div.className = 'message user';
+    div.innerHTML = `
+        <div class="message-avatar">${initial}</div>
+        <div class="message-bubble">
+            <div class="message-text">${escapeHtml(text)}</div>
+            <div class="message-time">${getTime()}</div>
+        </div>
+    `;
+    container.appendChild(div);
+    scrollToBottom();
+}
+
+// ── Append AI Message ──────────────────────────
+function appendAIMessage(answer, sources) {
+    const container = document.getElementById('messagesContainer');
+
+    // Build sources HTML
+    let sourcesHtml = '';
+    if (sources && sources.length > 0) {
+        const sourceItems = sources.map(s => `
+            <div class="source-item">
+                📄 <span>${escapeHtml(s.document)}</span>
+                — Page ${s.page}
+            </div>
+        `).join('');
+
+        sourcesHtml = `
+            <div class="message-sources">
+                <div class="sources-title">📌 Sources</div>
+                ${sourceItems}
+            </div>
+        `;
+    }
+
+    const div = document.createElement('div');
+    div.className = 'message ai';
+    div.innerHTML = `
+        <div class="message-avatar">🧠</div>
+        <div class="message-bubble">
+            <div class="message-text">${escapeHtml(answer)}</div>
+            ${sourcesHtml}
+            <div class="message-time">${getTime()}</div>
+        </div>
+    `;
+    container.appendChild(div);
+    scrollToBottom();
+}
+
+// ── Append Error Message ───────────────────────
+function appendErrorMessage(text) {
+    const container = document.getElementById('messagesContainer');
+    const div = document.createElement('div');
+    div.className = 'message ai error';
+    div.innerHTML = `
+        <div class="message-avatar">⚠️</div>
+        <div class="message-bubble">
+            <div class="message-text">${escapeHtml(text)}</div>
+        </div>
+    `;
+    container.appendChild(div);
+    scrollToBottom();
+}
+
+// ── Typing Indicator ───────────────────────────
+function showTypingIndicator() {
+    const container = document.getElementById('messagesContainer');
+    const id = 'typing-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'typing-indicator';
+    div.id = id;
+    div.innerHTML = `
+        <div class="message-avatar" style="
+            width:36px; height:36px; border-radius:50%;
+            background: linear-gradient(135deg, #1e3a5f, #0d2137);
+            border: 1px solid #2d4a6f;
+            display:flex; align-items:center;
+            justify-content:center; font-size:18px;">
+            🧠
+        </div>
+        <div class="typing-bubble">
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+            <div class="typing-dot"></div>
+        </div>
+    `;
+    container.appendChild(div);
+    scrollToBottom();
+    return id;
+}
+
+function removeTypingIndicator(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+}
+
+// ── Helpers ────────────────────────────────────
+function scrollToBottom() {
+    const chatArea = document.getElementById('chatArea');
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function getTime() {
+    return new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+}
+
+function autoResize(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+}
+
+function handleKeyDown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendQuestion();
+    }
+}
+
+// ── Sidebar & Logout ───────────────────────────
 function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('open');
 }
 
-// ── Logout ─────────────────────────────────────
 function handleLogout() {
     localStorage.clear();
-    window.location.href = 'login.html';
+    window.location.href = '/login';
 }
 
 // ── Upload Modal ───────────────────────────────
@@ -163,8 +344,7 @@ function handleFileSelect(event) {
     }
 
     document.getElementById('fileName').textContent = file.name;
-    document.getElementById('fileSize').textContent =
-        formatFileSize(file.size);
+    document.getElementById('fileSize').textContent = formatFileSize(file.size);
     document.getElementById('fileInfo').style.display = 'flex';
     document.getElementById('titleGroup').style.display = 'block';
 }
@@ -175,34 +355,99 @@ function removeFile() {
     document.getElementById('titleGroup').style.display = 'none';
 }
 
-// ── Format File Size ───────────────────────────
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
+// ── Upload Document ────────────────────────────
+async function uploadDocument() {
+    const fileInput = document.getElementById('fileInput');
+    const file = fileInput.files[0];
 
-// ── Escape HTML ────────────────────────────────
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(text));
-    return div.innerHTML;
-}
+    if (!file) {
+        const errorEl = document.getElementById('uploadError');
+        errorEl.textContent = 'Please select a PDF file first.';
+        errorEl.classList.add('show');
+        return;
+    }
 
-// ── Textarea Auto Resize ───────────────────────
-function autoResize(textarea) {
-    textarea.style.height = 'auto';
-    textarea.style.height = textarea.scrollHeight + 'px';
-}
+    const title = document.getElementById('docTitle').value.trim() || file.name;
+    const uploadBtn = document.getElementById('uploadBtn');
 
-// ── Enter Key Handler ──────────────────────────
-function handleKeyDown(event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendQuestion();
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Uploading...';
+
+    // Show progress
+    document.getElementById('uploadProgress').style.display = 'block';
+    setStep(1, 'active');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', title);
+
+    try {
+        setStep(1, 'active');
+        await delay(400);
+        setStep(2, 'active');
+
+        const response = await fetch(`${API_BASE}/documents/upload/`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            },
+            body: formData
+        });
+
+        setStep(3, 'active');
+        await delay(400);
+        setStep(4, 'active');
+        await delay(400);
+
+        const data = await response.json();
+
+        if (response.ok) {
+            // Mark all steps done
+            [1,2,3,4].forEach(i => setStep(i, 'done'));
+
+            const successEl = document.getElementById('uploadSuccess');
+            successEl.textContent = '✅ ' + data.message;
+            successEl.classList.add('show');
+
+            uploadBtn.textContent = 'Done!';
+
+            // Refresh documents list
+            await loadDocuments();
+
+            // Close modal after 2 seconds
+            setTimeout(() => closeUploadModal(), 2000);
+
+        } else {
+            const errorEl = document.getElementById('uploadError');
+            errorEl.textContent = data.error || 'Upload failed.';
+            errorEl.classList.add('show');
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Try Again';
+        }
+
+    } catch (error) {
+        const errorEl = document.getElementById('uploadError');
+        errorEl.textContent = 'Cannot connect to server.';
+        errorEl.classList.add('show');
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Try Again';
     }
 }
 
-// ── Initialize App ─────────────────────────────
+function setStep(num, status) {
+    const step = document.getElementById(`step${num}`);
+    if (!step) return;
+    step.className = `progress-step ${status}`;
+    const icon = step.querySelector('.step-icon');
+    if (status === 'done') icon.textContent = '✅';
+    else if (status === 'active') icon.textContent = '⏳';
+    else icon.textContent = '⬜';
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ── Initialize ─────────────────────────────────
 loadDocuments();
 loadHistory();

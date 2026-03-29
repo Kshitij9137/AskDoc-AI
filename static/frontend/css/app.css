@@ -555,3 +555,162 @@
 
     .menu-toggle { display: block; }
 }
+
+/* ── Messages ─────────────────────────────────── */
+.message {
+    display: flex;
+    gap: 12px;
+    animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* User Message */
+.message.user {
+    flex-direction: row-reverse;
+}
+
+.message-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    font-weight: 700;
+}
+
+.message.user .message-avatar {
+    background: linear-gradient(135deg, #7c6af7, #5b4fcf);
+    color: white;
+    font-size: 13px;
+}
+
+.message.ai .message-avatar {
+    background: linear-gradient(135deg, #1e3a5f, #0d2137);
+    border: 1px solid #2d4a6f;
+    font-size: 18px;
+}
+
+/* Bubble */
+.message-bubble {
+    max-width: 70%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.message.user .message-bubble {
+    align-items: flex-end;
+}
+
+.message-text {
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    word-wrap: break-word;
+}
+
+.message.user .message-text {
+    background: linear-gradient(135deg, #7c6af7, #5b4fcf);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.message.ai .message-text {
+    background: #1e1e2e;
+    border: 1px solid #2d2d3f;
+    color: #e0e0e0;
+    border-bottom-left-radius: 4px;
+}
+
+/* Sources */
+.message-sources {
+    background: #13131f;
+    border: 1px solid #2d2d3f;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+}
+
+.sources-title {
+    color: #7c6af7;
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.source-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #888;
+    padding: 3px 0;
+}
+
+.source-item span {
+    color: #aaa;
+}
+
+/* Timestamp */
+.message-time {
+    font-size: 11px;
+    color: #444;
+    padding: 0 4px;
+}
+
+/* ── Typing Indicator ─────────────────────────── */
+.typing-indicator {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    animation: fadeInUp 0.3s ease;
+}
+
+.typing-bubble {
+    background: #1e1e2e;
+    border: 1px solid #2d2d3f;
+    border-radius: 16px;
+    border-bottom-left-radius: 4px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.typing-dot {
+    width: 7px;
+    height: 7px;
+    background: #7c6af7;
+    border-radius: 50%;
+    animation: typingBounce 1.2s infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── Error Bubble ─────────────────────────────── */
+.message.error .message-text {
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    color: #ff6b7a;
+}
