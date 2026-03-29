@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AskDocs AI — Register</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="auth-container">
+    <div class="auth-card">
+
+        <!-- Logo -->
+        <div class="auth-logo">
+            <h1>🧠 AskDocs AI</h1>
+            <p>AI-Powered Document Intelligence</p>
+        </div>
+
+        <h2>Create Account</h2>
+
+        <!-- Messages -->
+        <div class="error-msg" id="errorMsg"></div>
+        <div class="success-msg" id="successMsg"></div>
+
+        <!-- Register Form -->
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input
+                type="text"
+                id="username"
+                placeholder="Choose a username"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input
+                type="email"
+                id="email"
+                placeholder="Enter your email"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input
+                type="password"
+                id="password"
+                placeholder="Min 8 characters"
+            />
+        </div>
+
+        <button class="btn-primary" id="registerBtn" onclick="handleRegister()">
+            Create Account
+        </button>
+
+        <div class="auth-footer">
+            Already have an account?
+            <a href="login.html">Login here</a>
+        </div>
+
+    </div>
+</div>
+
+<script src="js/auth.js"></script>
+
+</body>
+</html>
