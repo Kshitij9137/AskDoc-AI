@@ -383,8 +383,7 @@ async function uploadDocument() {
 
     try {
         setStep(1, 'active');
-        await delay(400);
-        setStep(2, 'active');
+        await delay(300);
 
         const response = await fetch(`${API_BASE}/documents/upload/`, {
             method: 'POST',
@@ -394,24 +393,26 @@ async function uploadDocument() {
             body: formData
         });
 
+        setStep(2, 'active');
+        await delay(500);
         setStep(3, 'active');
-        await delay(400);
+        await delay(500);
         setStep(4, 'active');
-        await delay(400);
+        await delay(300);
 
         const data = await response.json();
 
         if (response.ok) {
             // Mark all steps done
-            [1,2,3,4].forEach(i => setStep(i, 'done'));
+            [1, 2, 3, 4].forEach(i => setStepDone(i));
 
             const successEl = document.getElementById('uploadSuccess');
-            successEl.textContent = '✅ ' + data.message;
+            successEl.textContent = '✅ Document uploaded and processed successfully!';
             successEl.classList.add('show');
 
-            uploadBtn.textContent = 'Done!';
+            uploadBtn.textContent = 'Done ✓';
 
-            // Refresh documents list
+            // Refresh documents list in sidebar
             await loadDocuments();
 
             // Close modal after 2 seconds
@@ -419,15 +420,15 @@ async function uploadDocument() {
 
         } else {
             const errorEl = document.getElementById('uploadError');
-            errorEl.textContent = data.error || 'Upload failed.';
+            errorEl.textContent = data.error || 'Upload failed. Please try again.';
             errorEl.classList.add('show');
             uploadBtn.disabled = false;
             uploadBtn.textContent = 'Try Again';
         }
 
-    } catch (error) {
+        } catch (error) {
         const errorEl = document.getElementById('uploadError');
-        errorEl.textContent = 'Cannot connect to server.';
+        errorEl.textContent = 'Cannot connect to server. Make sure Django is running.';
         errorEl.classList.add('show');
         uploadBtn.disabled = false;
         uploadBtn.textContent = 'Try Again';
@@ -437,11 +438,29 @@ async function uploadDocument() {
 function setStep(num, status) {
     const step = document.getElementById(`step${num}`);
     if (!step) return;
+
     step.className = `progress-step ${status}`;
     const icon = step.querySelector('.step-icon');
-    if (status === 'done') icon.textContent = '✅';
-    else if (status === 'active') icon.textContent = '⏳';
-    else icon.textContent = '⬜';
+
+    if (status === 'done') {
+        icon.textContent = '✅';
+    } else if (status === 'active') {
+        icon.textContent = '⏳';
+        // Mark previous steps as done
+        for (let i = 1; i < num; i++) {
+            setStepDone(i);
+        }
+    } else {
+        icon.textContent = '⬜';
+    }
+}
+
+function setStepDone(num) {
+    const step = document.getElementById(`step${num}`);
+    if (!step) return;
+    step.className = 'progress-step done';
+    const icon = step.querySelector('.step-icon');
+    if (icon) icon.textContent = '✅';
 }
 
 function delay(ms) {
@@ -451,3 +470,42 @@ function delay(ms) {
 // ── Initialize ─────────────────────────────────
 loadDocuments();
 loadHistory();
+
+// ── Drag & Drop Support ────────────────────────
+const dropZone = document.getElementById('dropZone');
+if (dropZone) {
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            alert('Only PDF files are supported.');
+            return;
+        }
+
+        // Simulate file input selection
+        const fileInput = document.getElementById('fileInput');
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        fileInput.files = dataTransfer.files;
+
+        // Show file info
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent =
+            formatFileSize(file.size);
+        document.getElementById('fileInfo').style.display = 'flex';
+        document.getElementById('titleGroup').style.display = 'block';
+    });
+}
