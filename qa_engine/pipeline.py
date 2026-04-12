@@ -167,12 +167,27 @@ def extract_answer(question, context):
     scored.sort(key=lambda x: x[0], reverse=True)
 
     if not scored:
-        # Fallback — return first clean sentence from context
+        # Fallback — find best clean sentence from context
+        best_fallback = None
+        best_length = 0
         for sentence in sentences:
             sentence = sentence.strip()
-            if (len(sentence.split()) >= 10
-                    and not is_noise_sentence(sentence)):
-                return sentence
+            # Skip noise
+            if is_noise_sentence(sentence):
+                continue
+            # Skip bullet point heavy sentences
+            if sentence.count('◦') + sentence.count('•') > 2:
+                continue
+            # Skip API path sentences
+            if '/api/' in sentence:
+                continue
+            word_count = len(sentence.split())
+            if word_count >= 15 and word_count > best_length:
+                best_length = word_count
+                best_fallback = sentence
+
+        if best_fallback:
+            return best_fallback
         return "I found related content but could not extract a clear answer. Please try rephrasing your question."
 
     # Take top 3 sentences

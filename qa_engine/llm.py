@@ -11,20 +11,35 @@ print("QA model loaded! ✅")
 
 def clean_for_model(text):
     """
-    Clean text before sending to QA model.
-    Remove special characters that confuse tokenizer.
+    Aggressively clean text before sending to QA model.
     """
     # Remove bullet points and special chars
-    text = re.sub(r'[◦▪•●▸▹►]', '', text)
-    # Remove multiple spaces
-    text = re.sub(r' +', ' ', text)
-    # Remove lines starting with symbols
+    text = re.sub(r'[◦▪•●▸▹►◆▷]', '', text)
+
+    # Remove lines starting with POST/GET API paths
     lines = text.split('\n')
-    clean_lines = [
-        l.strip() for l in lines
-        if l.strip() and len(l.strip()) > 5
-    ]
-    return ' '.join(clean_lines)
+    clean_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # Skip API endpoint lines
+        if re.match(r'^(POST|GET|PUT|DELETE)\s+/api', line):
+            continue
+        # Skip lines that are mostly symbols
+        if len(re.findall(r'[a-zA-Z]', line)) < len(line) * 0.3:
+            continue
+        # Skip very short lines
+        if len(line.split()) < 4:
+            continue
+        clean_lines.append(line)
+
+    text = ' '.join(clean_lines)
+
+    # Clean up extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+
+    return text.strip()
 
 
 def score_sentence_with_model(question, sentence):

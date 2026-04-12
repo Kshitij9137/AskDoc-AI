@@ -3,14 +3,23 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
+from django.http import HttpResponse
 import os
+
+
+def favicon(request):
+    return HttpResponse(status=204)
+
 
 def serve_frontend(request, filename):
     from django.http import FileResponse, Http404
-    file_path = os.path.join(settings.BASE_DIR, 'static', 'frontend', filename)
+    file_path = os.path.join(
+        settings.BASE_DIR, 'static', 'frontend', filename
+    )
     if os.path.exists(file_path):
         return FileResponse(open(file_path, 'rb'))
     raise Http404
+
 
 def serve_frontend_asset(request, folder, filename):
     from django.http import FileResponse, Http404
@@ -21,11 +30,13 @@ def serve_frontend_asset(request, folder, filename):
         return FileResponse(open(file_path, 'rb'))
     raise Http404
 
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('users.urls')),
     path('api/documents/', include('documents.urls')),
     path('api/qa/', include('qa_engine.urls')),
+    path('favicon.ico', favicon),
 
     # Serve frontend pages
     path('', RedirectView.as_view(url='/login')),
