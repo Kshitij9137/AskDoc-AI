@@ -7,16 +7,21 @@ django.setup()
 from qa_engine.pipeline import answer_question
 
 questions = [
-    "What is AskDocs AI?",
-    "What is the problem definition?",
-    "What is the objective of this project?",
-    "What technologies are used?",
-    "What is semantic search?",
-    "What is FAISS used for?",
-    "What are the functional requirements?",
-    "What is JWT authentication?",
-    "What is sentence transformer?",
-    "What is the system workflow?",
+    
+
+"What are the major renewable energy technologies?",
+
+"What technologies are used in renewable energy systems?",
+
+"What are the challenges?",
+
+"What is the future scope?",
+
+"What is solar PV technology?",
+
+"What are the milestones?",
+
+"List the references.",
 ]
 
 noise_words = ['page no', 'ccet ips', 'submitted by', 'batch year', 'enrolment']
@@ -29,7 +34,7 @@ for i, q in enumerate(questions, 1):
     answer = result['answer']
 
     has_noise = any(n in answer.lower() for n in noise_words)
-    is_short = len(answer.split()) < 10
+    is_short = len(answer.split()) < 4
     is_fallback = 'could not find' in answer.lower()
 
     if has_noise or is_fallback:

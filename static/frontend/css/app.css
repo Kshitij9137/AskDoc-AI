@@ -1423,3 +1423,38 @@ body {
     .prompt-grid { grid-template-columns: 1fr; }
     .input-zone { padding: 10px 12px 14px; }
 }
+
+
+/* ── Doc item delete button ─────────────────── */
+.doc-item-info {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.doc-delete-btn {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: var(--r-sm);
+    color: var(--t3);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: all 0.15s;
+    padding: 0;
+}
+
+.doc-item:hover .doc-delete-btn {
+    opacity: 1;
+}
+
+.doc-delete-btn:hover {
+    background: rgba(248, 113, 113, 0.12);
+    color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+}

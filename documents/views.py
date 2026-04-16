@@ -5,6 +5,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from .models import Document, ExtractedText, DocumentChunk
 from .serializers import DocumentUploadSerializer, DocumentListSerializer
 from .processor import process_document
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
 
 
 class DocumentUploadView(APIView):
@@ -88,20 +90,34 @@ class DocumentListView(generics.ListAPIView):
         ).order_by('-upload_date')
 
 
-class DocumentDetailView(generics.RetrieveAPIView):
-    """Get details of a single document"""
+class DocumentDetailView(generics.RetrieveDestroyAPIView):
+    """Get or delete a single document"""
     serializer_class = DocumentListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Document.objects.filter(owner=self.request.user)
 
-    def get_object(self):
-        try:
-            return super().get_object()
-        except Exception:
-            from rest_framework.exceptions import NotFound
-            raise NotFound('Document not found or access denied.')
+    def destroy(self, request, *args, **kwargs):
+        document = self.get_object()
+
+        # Delete the actual PDF file from disk
+        import os
+        if document.file and os.path.exists(document.file.path):
+            os.remove(document.file.path)
+
+        # Rebuild FAISS index after deletion
+        document.delete()
+
+        from documents.faiss_store import build_faiss_index
+        from documents.models import ChunkEmbedding
+        if ChunkEmbedding.objects.exists():
+            build_faiss_index()
+
+        return Response(
+            {'message': 'Document deleted successfully.'},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 class DocumentExtractedTextView(APIView):

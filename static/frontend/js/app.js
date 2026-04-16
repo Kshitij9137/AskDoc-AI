@@ -49,17 +49,27 @@ async function loadDocuments() {
         }
 
         docList.innerHTML = docs.map(doc => `
-            <div class="doc-item" title="${escapeHtml(doc.title)}">
-                <span class="doc-item-icon">📄</span>
-                <div>
-                    <div class="doc-item-name">${escapeHtml(doc.title)}</div>
-                    <div class="doc-item-size">
-                        ${formatFileSize(doc.file_size)} ·
-                        ${doc.is_processed ? '✅ Ready' : '⏳ Processing'}
-                    </div>
-                </div>
+    <div class="doc-item" title="${escapeHtml(doc.title)}" id="doc-${doc.id}">
+        <span class="doc-item-icon">📄</span>
+        <div class="doc-item-info">
+            <div class="doc-item-name">${escapeHtml(doc.title)}</div>
+            <div class="doc-item-size">
+                ${formatFileSize(doc.file_size)} ·
+                ${doc.is_processed ? '✅ Ready' : '⏳ Processing'}
             </div>
-        `).join('');
+        </div>
+        <button
+            class="doc-delete-btn"
+            onclick="deleteDocument(${doc.id}, '${escapeHtml(doc.title)}')"
+            title="Delete document"
+        >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor"
+                      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+`).join('');
 
     } catch (error) {
         console.error('Failed to load documents:', error);
@@ -426,7 +436,7 @@ async function uploadDocument() {
             uploadBtn.textContent = 'Try Again';
         }
 
-        } catch (error) {
+    } catch (error) {
         const errorEl = document.getElementById('uploadError');
         errorEl.textContent = 'Cannot connect to server. Make sure Django is running.';
         errorEl.classList.add('show');
@@ -508,4 +518,49 @@ if (dropZone) {
         document.getElementById('fileInfo').style.display = 'flex';
         document.getElementById('titleGroup').style.display = 'block';
     });
+}
+
+// ── Delete Document ────────────────────────────
+async function deleteDocument(docId, docTitle) {
+    // Ask for confirmation first
+    if (!confirm(`Delete "${docTitle}"?\n\nThis will permanently remove the document and all its data.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/documents/${docId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+
+        if (response.ok || response.status === 204) {
+            // Remove from sidebar immediately
+            const el = document.getElementById(`doc-${docId}`);
+            if (el) {
+                el.style.transition = 'all 0.3s ease';
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-10px)';
+                setTimeout(() => {
+                    el.remove();
+                    // Update doc count
+                    const remaining = document.querySelectorAll('.doc-item').length;
+                    const countEl = document.getElementById('docCount');
+                    if (countEl) countEl.textContent = remaining;
+                    // Show empty state if no docs left
+                    if (remaining === 0) {
+                        document.getElementById('docList').innerHTML =
+                            '<div class="sidebar-empty"><p>No documents yet</p></div>';
+                    }
+                }, 300);
+            }
+            console.log(`Deleted: ${docTitle}`);
+        } else {
+            alert('Failed to delete document. Please try again.');
+        }
+
+    } catch (error) {
+        alert('Cannot connect to server.');
+    }
 }

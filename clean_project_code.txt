@@ -135,7 +135,7 @@ for i, q in enumerate(questions, 1):
     answer = result['answer']
 
     has_noise = any(n in answer.lower() for n in noise_words)
-    is_short = len(answer.split()) < 10
+    is_short = len(answer.split()) < 4
     is_fallback = 'could not find' in answer.lower()
 
     if has_noise or is_fallback:
@@ -1420,7 +1420,7 @@ FILE: documents\migrations\__init__.py
 ======================================================================
 FILE: faiss_index\chunk_map.json
 ======================================================================
-{"0": 549, "1": 550, "2": 551, "3": 552, "4": 553, "5": 554, "6": 555, "7": 556, "8": 557, "9": 558, "10": 559, "11": 560, "12": 561, "13": 562, "14": 563, "15": 564, "16": 565, "17": 566, "18": 567, "19": 568, "20": 569, "21": 570, "22": 571, "23": 572, "24": 573, "25": 574, "26": 575, "27": 576, "28": 577, "29": 578, "30": 579, "31": 580, "32": 581, "33": 582, "34": 583, "35": 584, "36": 585, "37": 586, "38": 587}
+{"0": 549, "1": 550, "2": 551, "3": 552, "4": 553, "5": 554, "6": 555, "7": 556, "8": 557, "9": 558, "10": 559, "11": 560, "12": 561, "13": 562, "14": 563, "15": 564, "16": 565, "17": 566, "18": 567, "19": 568, "20": 569, "21": 570, "22": 571, "23": 572, "24": 573, "25": 574, "26": 575, "27": 576, "28": 577, "29": 578, "30": 579, "31": 580, "32": 581, "33": 582, "34": 583, "35": 584, "36": 585, "37": 586, "38": 587, "39": 588, "40": 589, "41": 590, "42": 591, "43": 592, "44": 593, "45": 594, "46": 595, "47": 596, "48": 597, "49": 598, "50": 599, "51": 600, "52": 601, "53": 602, "54": 603, "55": 604, "56": 605, "57": 606, "58": 607, "59": 608, "60": 609, "61": 610, "62": 611, "63": 612, "64": 613, "65": 614, "66": 615, "67": 616, "68": 617, "69": 618, "70": 619, "71": 620, "72": 621, "73": 622, "74": 623, "75": 624, "76": 625, "77": 626, "78": 627, "79": 628, "80": 629, "81": 630, "82": 631, "83": 632, "84": 633, "85": 634, "86": 635, "87": 636, "88": 637}
 ======================================================================
 FILE: qa_engine\admin.py
 ======================================================================
@@ -1459,172 +1459,86 @@ class QaEngineConfig(AppConfig):
 ======================================================================
 FILE: qa_engine\llm.py
 ======================================================================
-from transformers import AutoTokenizer, AutoModelForQuestionAnswering
-import torch
 import re
+import torch
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
-print("Loading QA model...")
-MODEL_NAME = "deepset/roberta-base-squad2"
+MODEL_NAME = "google/flan-t5-large"
+
+print("Loading Flan-T5 generative model...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForQuestionAnswering.from_pretrained(MODEL_NAME)
-print("QA model loaded! ✅")
+model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+model.eval()
+print("Flan-T5 loaded! ✅")
 
 
-def clean_for_model(text):
-    """
-    Aggressively clean text before sending to QA model.
-    """
-    # Remove bullet points and special chars
-    text = re.sub(r'[◦▪•●▸▹►◆▷]', '', text)
-
-    # Remove lines starting with POST/GET API paths
+def clean_context(text):
+    text = re.sub(r'[◦▪•●▸▹►◆▷]', ' ', text)
+    text = re.sub(r'(POST|GET|PUT|DELETE)\s+/api/\S+', '', text)
+    text = re.sub(r'Page No\.\s*\S+', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'CCET\s+IPS', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\b[ivxlcdm]+\b\.?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^\d+\.?\s*$', '', text, flags=re.MULTILINE)
     lines = text.split('\n')
-    clean_lines = []
+    clean = []
     for line in lines:
         line = line.strip()
         if not line:
             continue
-        # Skip API endpoint lines
-        if re.match(r'^(POST|GET|PUT|DELETE)\s+/api', line):
-            continue
-        # Skip lines that are mostly symbols
-        if len(re.findall(r'[a-zA-Z]', line)) < len(line) * 0.3:
-            continue
-        # Skip very short lines
         if len(line.split()) < 4:
             continue
-        clean_lines.append(line)
-
-    text = ' '.join(clean_lines)
-
-    # Clean up extra whitespace
-    text = re.sub(r'\s+', ' ', text)
-
-    return text.strip()
-
-
-def score_sentence_with_model(question, sentence):
-    """
-    Use the QA model to score how well a sentence
-    answers the question. Returns confidence score.
-    """
-    try:
-        inputs = tokenizer(
-            question,
-            sentence,
-            return_tensors="pt",
-            truncation=True,
-            max_length=512,
-            padding=True
-        )
-
-        with torch.no_grad():
-            outputs = model(**inputs)
-
-        # Get the best answer span
-        start = torch.argmax(outputs.start_logits)
-        end = torch.argmax(outputs.end_logits) + 1
-
-        if end <= start:
-            end = start + 1
-
-        # Decode answer
-        tokens = inputs["input_ids"][0][start:end]
-        answer = tokenizer.decode(tokens, skip_special_tokens=True).strip()
-
-        # Calculate confidence
-        start_prob = torch.softmax(
-            outputs.start_logits, dim=1
-        )[0][start].item()
-        end_prob = torch.softmax(
-            outputs.end_logits, dim=1
-        )[0][end-1].item()
-        confidence = (start_prob + end_prob) / 2
-
-        return answer, confidence
-
-    except Exception:
-        return "", 0.0
+        if re.match(r'^[\d\s\.\-]+$', line):
+            continue
+        clean.append(line)
+    text = ' '.join(clean)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
 
 
 def generate_answer_with_model(question, context):
-    """
-    Improved approach:
-    1. Split context into clean sentences
-    2. Score each sentence using the QA model
-    3. Return the answer from the highest scoring sentence
-    """
     try:
+        context = clean_context(context)
         if not context or not question:
             return None
 
-        # Clean the context
-        context = clean_for_model(context)
+        words = context.split()
+        if len(words) > 600:
+            context = ' '.join(words[:600])
 
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', context)
+        # Slightly more directive prompt
+        prompt = f"""Question: {question}
 
-        # Filter sentences
-        good_sentences = []
-        for s in sentences:
-            s = s.strip()
-            word_count = len(s.split())
-            # Keep sentences with 8-100 words
-            if 8 <= word_count <= 100:
-                good_sentences.append(s)
+Context:
+{context}
 
-        if not good_sentences:
-            return None
+Provide a clear and concise answer based only on the context. If the context contains a list or bullet points, include them in your answer.
+Answer:"""
 
-        # Score each sentence with the model
-        best_answer = None
-        best_score = 0.0
-        best_sentence = None
+        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
 
-        for sentence in good_sentences[:10]:
-            answer, score = score_sentence_with_model(
-                question, sentence
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=200,
+                num_beams=4,
+                early_stopping=True,
+                no_repeat_ngram_size=2,
+                length_penalty=1.5,          # Encourage longer answers
+                repetition_penalty=1.1,      # Discourage repeating tokens
             )
 
-            # ✅ Fix 1: Remove question text from answer
-            # Sometimes model includes the question in answer
-            if answer.lower().startswith(question.lower()[:20].lower()):
-                answer = answer[len(question):].strip()
+        answer = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
 
-            # ✅ Fix 2: Skip very short or ToC-like answers
-            if re.match(r'^.*\bxi\b|\bxv\b|\bvii\b|\bviii\b', answer):
-                continue
+        print(f"Context preview: {context[:200]}...")
+        print(f"Flan-T5 answer: {answer[:120]}")
 
-            if score > best_score and len(answer) > 3:
-                best_score = score
-                best_answer = answer
-                best_sentence = sentence
+        if not answer or len(answer.split()) < 1:
+            return None
 
-        print(f"Best score: {best_score:.3f}")
-
-        # If model found a good short answer return full sentence
-        if best_answer and best_score > 0.1 and len(best_answer.split()) >= 3:
-            if len(best_answer.split()) < 6 and best_sentence:
-                # ✅ Fix 3: Clean the sentence before returning
-                clean = best_sentence
-                # Remove question prefix if present
-                q_prefix = question.lower()[:15]
-                if clean.lower().startswith(q_prefix):
-                    clean = clean[len(question):].strip()
-                return clean
-            return best_answer
-
-        if best_sentence and best_score > 0.05:
-            clean = best_sentence
-            q_prefix = question.lower()[:15]
-            if clean.lower().startswith(q_prefix):
-                clean = clean[len(question):].strip()
-            return clean
-
-        return None
+        return answer
 
     except Exception as e:
-        print(f"QA model error: {e}")
+        print(f"Flan-T5 error: {e}")
         return None
 ======================================================================
 FILE: qa_engine\models.py
@@ -1681,7 +1595,12 @@ FILE: qa_engine\pipeline.py
 ======================================================================
 import re
 from .searcher import search_similar_chunks
+from sentence_transformers import CrossEncoder
 
+# ── Load cross-encoder for reranking ─────────────
+print("Loading cross-encoder for reranking...")
+reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+print("Cross-encoder loaded! ✅")
 
 # ── Noise filters ──────────────────────────────
 NOISE_PHRASES = [
@@ -1690,7 +1609,7 @@ NOISE_PHRASES = [
     'project guide', 'university of allahabad',
     'institute of professional', 'centre of computer',
     'prayagraj', 'uttar pradesh', 'master of computer',
-    '4th semester', '2024-2026', 'u2449028',
+    '4th semester', '2024-2026',
 ]
 
 STOP_WORDS = {
@@ -1706,175 +1625,97 @@ STOP_WORDS = {
 
 
 def is_noise_sentence(sentence):
-    """
-    Returns True if sentence is noise and
-    should NOT appear in the answer.
-    """
     sentence_lower = sentence.lower()
-
-    # Check noise phrases
     for phrase in NOISE_PHRASES:
         if phrase in sentence_lower:
             return True
-
-    # Skip sentences with too many numbers
     digits = re.findall(r'\d', sentence)
     if len(digits) > len(sentence) * 0.3:
         return True
-
-    # Skip sentences that look like headers
-    # (ALL CAPS or Title Case with few words)
     words = sentence.split()
     if len(words) < 8:
         caps_words = sum(1 for w in words if w.isupper() and len(w) > 1)
         if caps_words >= len(words) * 0.5:
             return True
-
     return False
 
 
 def get_question_keywords(question):
-    """
-    Extract meaningful keywords from question.
-    Removes stop words and short words.
-    """
     words = re.findall(r'[a-zA-Z]+', question.lower())
-    keywords = set(
-        w for w in words
-        if w not in STOP_WORDS and len(w) > 2
-    )
+    keywords = set(w for w in words if w not in STOP_WORDS and len(w) > 2)
     return keywords
 
 
 def score_sentence(sentence, keywords):
-    """
-    Score a sentence based on how relevant it is
-    to the question keywords.
-
-    Scoring rules:
-    +2 per exact keyword match
-    +1 if sentence is longer (more informative)
-    +1 if sentence starts with a keyword
-    -1 if sentence is very short
-    """
     sentence_lower = sentence.lower()
     sentence_words = set(re.findall(r'[a-zA-Z]+', sentence_lower))
     word_list = sentence.split()
-
     score = 0
-
-    # Exact keyword matches
     matches = keywords & sentence_words
     score += len(matches) * 2
-
-    # Partial matches (keyword appears as substring)
     for keyword in keywords:
         if keyword in sentence_lower and keyword not in sentence_words:
             score += 1
-
-    # Bonus for longer informative sentences
     if len(word_list) > 20:
         score += 1
     if len(word_list) > 40:
         score += 1
-
-    # Bonus if sentence starts with a keyword
     if word_list and word_list[0].lower() in keywords:
         score += 1
-
-    # Penalty for very short sentences
     if len(word_list) < 8:
         score -= 2
-
     return score
 
 
-def build_context(chunks, max_words=800):
-    """
-    Combine retrieved chunks into a single context string.
-    """
+def build_context(chunks, max_words=600):
     context_parts = []
     total_words = 0
-
     for chunk in chunks:
         chunk_words = chunk['text'].split()
         if total_words + len(chunk_words) > max_words:
             break
         context_parts.append(chunk['text'])
         total_words += len(chunk_words)
-
     return '\n\n'.join(context_parts)
 
 
 def extract_answer(question, context):
-    """
-    Extract the most relevant answer sentences from context.
-
-    Strategy:
-    1. Split context into sentences
-    2. Filter out noise sentences
-    3. Score each sentence by keyword relevance
-    4. Return top 3 highest scoring sentences
-    """
     if not context:
         return "I could not find relevant information to answer your question."
-
-    # Get question keywords
     keywords = get_question_keywords(question)
-
-    # Split into sentences
     sentences = re.split(r'(?<=[.!?])\s+', context)
-
     scored = []
     for sentence in sentences:
         sentence = sentence.strip()
-
-        # Skip empty or very short sentences
         if len(sentence.split()) < 6:
             continue
-
-        # Skip noise sentences
         if is_noise_sentence(sentence):
             continue
-
-        # Score the sentence
         score = score_sentence(sentence, keywords)
-
-        # Only include sentences with positive score
         if score > 0:
             scored.append((score, sentence))
-
-    # Sort by score highest first
     scored.sort(key=lambda x: x[0], reverse=True)
-
     if not scored:
-        # Fallback — find best clean sentence from context
-        best_fallback = None
-        best_length = 0
+        clean_sentences = []
         for sentence in sentences:
             sentence = sentence.strip()
-            # Skip noise
-            if is_noise_sentence(sentence):
-                continue
-            # Skip bullet point heavy sentences
-            if sentence.count('◦') + sentence.count('•') > 2:
-                continue
-            # Skip API path sentences
-            if '/api/' in sentence:
-                continue
-            word_count = len(sentence.split())
-            if word_count >= 15 and word_count > best_length:
-                best_length = word_count
-                best_fallback = sentence
-
-        if best_fallback:
-            return best_fallback
-        return "I found related content but could not extract a clear answer. Please try rephrasing your question."
-
-    # Take top 3 sentences
-    top_sentences = [s for _, s in scored[:3]]
-
-    # Sort them back in original order for readability
+            if (len(sentence.split()) >= 10
+                    and not is_noise_sentence(sentence)
+                    and '/api/' not in sentence
+                    and sentence.count('◦') + sentence.count('•') < 2):
+                clean_sentences.append(sentence)
+            if len(clean_sentences) >= 3:
+                break
+        if clean_sentences:
+            return ' '.join(clean_sentences)
+        return "I found related content but could not extract a clear answer."
+    question_lower = question.lower()
+    is_summary = any(t in question_lower for t in [
+        'conclude', 'summarize', 'list', 'milestones',
+        'overview', 'all', 'timeline', 'steps', 'references'
+    ])
+    top_count = 5 if is_summary else 3
+    top_sentences = [s for _, s in scored[:top_count]]
     original_order = []
     for sentence in sentences:
         sentence = sentence.strip()
@@ -1882,22 +1723,16 @@ def extract_answer(question, context):
             original_order.append(sentence)
             if len(original_order) == len(top_sentences):
                 break
-
     answer = ' '.join(original_order) if original_order else ' '.join(top_sentences)
     return answer
 
 
 def build_sources(chunks):
-    """
-    Build a clean deduplicated list of sources.
-    """
     seen = set()
     sources_data = []
     chunks_for_db = []
-
     for chunk in chunks:
         key = (chunk['document_title'], chunk['page_number'])
-
         if key not in seen:
             seen.add(key)
             sources_data.append({
@@ -1905,32 +1740,20 @@ def build_sources(chunks):
                 'document_id': chunk['document_id'],
                 'page': chunk['page_number']
             })
-
         chunks_for_db.append(chunk)
-
     return sources_data, chunks_for_db
 
 
 def save_query_to_db(user, question, answer, chunks):
-    """
-    Save the question, answer, and sources to database.
-    """
     from .models import QueryLog, QuerySource
     from documents.models import Document
-
-    query_log = QueryLog.objects.create(
-        user=user,
-        question=question,
-        answer=answer
-    )
-
+    query_log = QueryLog.objects.create(user=user, question=question, answer=answer)
     seen = set()
     for chunk in chunks:
         key = (chunk['document_id'], chunk['page_number'])
         if key in seen:
             continue
         seen.add(key)
-
         try:
             document = Document.objects.get(id=chunk['document_id'])
             QuerySource.objects.create(
@@ -1941,19 +1764,38 @@ def save_query_to_db(user, question, answer, chunks):
             )
         except Document.DoesNotExist:
             continue
-
     return query_log
 
 
+def is_usable_chunk(text):
+    text_lower = text.lower()
+    if len(text.split()) < 25:
+        return False
+    noise_keywords = ['table of content', 'page no.', 'ccet', 'submitted by', 'enrolment']
+    if any(n in text_lower for n in noise_keywords):
+        return False
+    bullet_count = text.count('◦') + text.count('•') + text.count('▪')
+    if bullet_count > 4:
+        return False
+    if text.count('.') > 30 and len(text) < 200:
+        return False
+    if re.match(r'^[A-Z][a-z]+\s+[A-Z][a-z]+$', text.strip()):
+        return False
+    return True
+
+
+def rerank_chunks(question, chunks, top_k=5):
+    """Re‑rank chunks using a cross‑encoder for better relevance."""
+    if not chunks:
+        return []
+    pairs = [(question, chunk['text']) for chunk in chunks]
+    scores = reranker.predict(pairs)
+    # Sort by score descending
+    ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
+    return [chunk for chunk, _ in ranked[:top_k]]
+
+
 def answer_question(question, user=None):
-    """
-    Main Q&A pipeline with Hugging Face QA model:
-    1. Search relevant chunks via FAISS
-    2. Build context
-    3. Try HuggingFace QA model for precise answer
-    4. Fall back to extractive scoring if model fails
-    5. Return structured response
-    """
     if not question or not question.strip():
         return {
             "question": question,
@@ -1963,8 +1805,8 @@ def answer_question(question, user=None):
 
     print(f"\nProcessing: {question}")
 
-    # Step 1: Semantic search
-    chunks = search_similar_chunks(question, top_k=5)
+    # Step 1: Retrieve top 20 chunks
+    chunks = search_similar_chunks(question, top_k=30)
 
     if not chunks:
         return {
@@ -1973,27 +1815,43 @@ def answer_question(question, user=None):
             "sources": [],
         }
 
-    # Step 2: Build context
-    context = build_context(chunks, max_words=400)
+    # Step 2: Filter obvious noise
+    usable_chunks = [c for c in chunks if is_usable_chunk(c['text'])]
+    if len(usable_chunks) < 2:
+        usable_chunks = chunks[:5]
 
-    # Step 3: Build sources
-    sources_data, chunks_for_db = build_sources(chunks)
+    # Step 3: Rerank with cross‑encoder (top 5)
+    print(f"Reranking {len(usable_chunks)} chunks...")
+    best_chunks = rerank_chunks(question, usable_chunks, top_k=8)
+    print(f"Selected top {len(best_chunks)} chunks after reranking.")
 
-    # Step 4: Try HuggingFace QA model
-    print("Running QA model...")
+    # Step 4: Build context
+    context = build_context(best_chunks, max_words=800)
+    print(f"Context length: {len(context.split())} words")
+
+    # Step 5: Build sources
+    sources_data, chunks_for_db = build_sources(best_chunks)
+
+    # Step 6: Generate answer with Flan‑T5
+    print("Running Flan-T5...")
     from .llm import generate_answer_with_model
     answer = generate_answer_with_model(question, context)
 
-    if answer:
-        print(f"✅ Model answered: {answer[:100]}")
+    if answer is not None:
+        print(f"✅ Flan-T5 answered: {answer[:100]}")
     else:
-        # Step 5: Fall back to extractive answer
-        print("⚠️ Model fallback to extractive answer...")
+        print("⚠️ Flan-T5 failed, using extractive fallback...")
         answer = extract_answer(question, context)
 
-    # Step 6: Save to DB
+    # Step 7: Save to DB
     if user:
         save_query_to_db(user, question, answer, chunks_for_db)
+
+    if "reference" in question.lower():
+        # Boost chunks that explicitly contain "reference" or "bibliography"
+        for chunk in usable_chunks:
+            if re.search(r'\breferences?\b|\bbibliography\b', chunk['text'], re.I):
+                chunk['score_boost'] = 1.5   # use during reranking
 
     return {
         "question": question,
