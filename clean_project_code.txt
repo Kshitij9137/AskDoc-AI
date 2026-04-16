@@ -113,16 +113,21 @@ django.setup()
 from qa_engine.pipeline import answer_question
 
 questions = [
-    "What is AskDocs AI?",
-    "What is the problem definition?",
-    "What is the objective of this project?",
-    "What technologies are used?",
-    "What is semantic search?",
-    "What is FAISS used for?",
-    "What are the functional requirements?",
-    "What is JWT authentication?",
-    "What is sentence transformer?",
-    "What is the system workflow?",
+    
+
+"What are the major renewable energy technologies?",
+
+"What technologies are used in renewable energy systems?",
+
+"What are the challenges?",
+
+"What is the future scope?",
+
+"What is solar PV technology?",
+
+"What are the milestones?",
+
+"List the references.",
 ]
 
 noise_words = ['page no', 'ccet ips', 'submitted by', 'batch year', 'enrolment']
@@ -1148,6 +1153,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from .models import Document, ExtractedText, DocumentChunk
 from .serializers import DocumentUploadSerializer, DocumentListSerializer
 from .processor import process_document
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
 
 
 class DocumentUploadView(APIView):
@@ -1231,20 +1238,34 @@ class DocumentListView(generics.ListAPIView):
         ).order_by('-upload_date')
 
 
-class DocumentDetailView(generics.RetrieveAPIView):
-    """Get details of a single document"""
+class DocumentDetailView(generics.RetrieveDestroyAPIView):
+    """Get or delete a single document"""
     serializer_class = DocumentListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return Document.objects.filter(owner=self.request.user)
 
-    def get_object(self):
-        try:
-            return super().get_object()
-        except Exception:
-            from rest_framework.exceptions import NotFound
-            raise NotFound('Document not found or access denied.')
+    def destroy(self, request, *args, **kwargs):
+        document = self.get_object()
+
+        # Delete the actual PDF file from disk
+        import os
+        if document.file and os.path.exists(document.file.path):
+            os.remove(document.file.path)
+
+        # Rebuild FAISS index after deletion
+        document.delete()
+
+        from documents.faiss_store import build_faiss_index
+        from documents.models import ChunkEmbedding
+        if ChunkEmbedding.objects.exists():
+            build_faiss_index()
+
+        return Response(
+            {'message': 'Document deleted successfully.'},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
 class DocumentExtractedTextView(APIView):
@@ -1420,7 +1441,7 @@ FILE: documents\migrations\__init__.py
 ======================================================================
 FILE: faiss_index\chunk_map.json
 ======================================================================
-{"0": 549, "1": 550, "2": 551, "3": 552, "4": 553, "5": 554, "6": 555, "7": 556, "8": 557, "9": 558, "10": 559, "11": 560, "12": 561, "13": 562, "14": 563, "15": 564, "16": 565, "17": 566, "18": 567, "19": 568, "20": 569, "21": 570, "22": 571, "23": 572, "24": 573, "25": 574, "26": 575, "27": 576, "28": 577, "29": 578, "30": 579, "31": 580, "32": 581, "33": 582, "34": 583, "35": 584, "36": 585, "37": 586, "38": 587, "39": 588, "40": 589, "41": 590, "42": 591, "43": 592, "44": 593, "45": 594, "46": 595, "47": 596, "48": 597, "49": 598, "50": 599, "51": 600, "52": 601, "53": 602, "54": 603, "55": 604, "56": 605, "57": 606, "58": 607, "59": 608, "60": 609, "61": 610, "62": 611, "63": 612, "64": 613, "65": 614, "66": 615, "67": 616, "68": 617, "69": 618, "70": 619, "71": 620, "72": 621, "73": 622, "74": 623, "75": 624, "76": 625, "77": 626, "78": 627, "79": 628, "80": 629, "81": 630, "82": 631, "83": 632, "84": 633, "85": 634, "86": 635, "87": 636, "88": 637}
+{"0": 643, "1": 644, "2": 645, "3": 646, "4": 647}
 ======================================================================
 FILE: qa_engine\admin.py
 ======================================================================
@@ -2110,6 +2131,8 @@ FILE: static\frontend\index.html
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="/js/theme.js"></script>  
+    <link rel="stylesheet" href="/css/theme.css">
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="/css/app.css">
 </head>
@@ -2239,6 +2262,21 @@ FILE: static\frontend\index.html
                 </svg>
                 Semantic AI Engine
             </div>
+
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+        <!-- Sun icon (visible in dark mode) -->
+        <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <!-- Moon icon (visible in light mode) -->
+        <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"
+                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    </button>
+
 
             <div class="topbar-status">
                 <span class="status-ring"></span>
@@ -4119,6 +4157,156 @@ body {
     .input-zone { padding: 10px 12px 14px; }
 }
 
+
+/* ── Doc item delete button ─────────────────── */
+.doc-item-info {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.doc-delete-btn {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    border-radius: var(--r-sm);
+    color: var(--t3);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: all 0.15s;
+    padding: 0;
+}
+
+.doc-item:hover .doc-delete-btn {
+    opacity: 1;
+}
+
+.doc-delete-btn:hover {
+    background: rgba(248, 113, 113, 0.12);
+    color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+
+/* ═══════════════════════════════════════════════════
+   LIGHT MODE ENHANCEMENTS (app.css)
+   Implements gradient background, glass card, and refined details
+═══════════════════════════════════════════════════ */
+[data-theme="light"] {
+    /* Remove dark blue background from main content area */
+    .main-content {
+        background: transparent !important;
+    }
+
+    /* Ensure the gradient shows through */
+    #app {
+        background: transparent !important;
+    }
+
+    /* Glass card for the entire welcome screen */
+    .welcome-screen {
+        background: var(--glass-bg) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.6) !important;
+        box-shadow: var(--shadow-md) !important;
+        border-radius: 28px !important;
+        margin: 24px !important;
+        padding: 40px 30px !important;
+    }
+
+    /* Center icon glow */
+    .hero-orb-inner {
+        background: radial-gradient(circle, rgba(99,102,241,0.2), transparent 70%) !important;
+        border: 1px solid rgba(99,102,241,0.2) !important;
+        box-shadow: 0 0 30px rgba(99,102,241,0.1) !important;
+    }
+
+    /* Prompt cards (quick buttons) */
+    .prompt-card {
+        background: var(--welcome-card) !important;
+        border: 1px solid var(--line) !important;
+        border-radius: 16px !important;
+        padding: 16px 18px !important;
+        font-weight: 500 !important;
+        transition: all 0.25s ease !important;
+    }
+    .prompt-card:hover {
+        background: var(--accent-light, #eef2ff) !important;
+        border-color: var(--accent, #6366f1) !important;
+        color: var(--accent, #6366f1) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+
+    /* Input shell */
+    .input-shell {
+        background: var(--card-bg, #ffffff) !important;
+        border: 1px solid var(--border, #e2e8f0) !important;
+        border-radius: 20px !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+    .input-shell:focus-within {
+        border-color: var(--accent, #6366f1) !important;
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
+    }
+
+    /* Send button */
+    .send-btn {
+        background: var(--accent, #6366f1) !important;
+        border-radius: 14px !important;
+        transition: all 0.2s ease !important;
+    }
+    .send-btn:hover {
+        transform: scale(1.05) !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+
+    /* Sidebar items */
+    .doc-item,
+    .history-item {
+        border-radius: 12px !important;
+        margin-bottom: 2px !important;
+        transition: all 0.2s ease !important;
+    }
+    .history-item:hover {
+        background: #eef2ff !important;
+    }
+    .history-item.active {
+        background: var(--accent-light, #eef2ff) !important;
+        color: var(--accent, #6366f1) !important;
+    }
+
+    /* Online status */
+    .topbar-status {
+        color: var(--green, #16a34a) !important;
+    }
+    .status-ring {
+        background: var(--green, #16a34a) !important;
+    }
+
+    /* Modal overlay softer */
+    .modal-overlay {
+        background: rgba(248, 250, 253, 0.7) !important;
+        backdrop-filter: blur(8px) !important;
+    }
+
+    /* Typography */
+    .sidebar-label {
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.8px !important;
+    }
+    .welcome-heading {
+        font-weight: 650 !important;
+        letter-spacing: -0.3px !important;
+    }
+}
 ======================================================================
 FILE: static\frontend\css\style.css
 ======================================================================
@@ -4593,6 +4781,439 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 ======================================================================
+FILE: static\frontend\css\theme.css
+======================================================================
+/* ═══════════════════════════════════════════════════════════
+   AskDocs AI — Theme System v3
+   Dark: Obsidian space · Light: Pearl gradient minimalism
+═══════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════
+   DARK MODE (Default – unchanged)
+══════════════════════════════ */
+:root,
+[data-theme="dark"] {
+    --void:          #05050a;
+    --obsidian:      #090910;
+    --deep:          #0d0d18;
+    --surface:       #111120;
+    --raised:        #161628;
+    --card:          #1b1b30;
+    --hover:         #1f1f35;
+    --line:          rgba(255,255,255,0.055);
+    --line-focus:    rgba(34,211,238,0.5);
+    --sidebar-bg:    rgba(9,9,16,0.92);
+    --topbar-bg:     rgba(9,9,16,0.75);
+    --input-bg:      #161628;
+    --input-border:  rgba(255,255,255,0.07);
+    --input-focus:   rgba(34,211,238,0.35);
+    --input-shadow:  rgba(34,211,238,0.08);
+    --cyan:          #22d3ee;
+    --cyan-dim:      rgba(34,211,238,0.12);
+    --indigo:        #6366f1;
+    --indigo-dim:    rgba(99,102,241,0.12);
+    --violet:        #8b5cf6;
+    --t1:            #f1f1fa;
+    --t2:            #8888aa;
+    --t3:            #45455a;
+    --green:         #10b981;
+    --red:           #f87171;
+    --user-from:     #4f46e5;
+    --user-to:       #7c3aed;
+    --user-shadow:   rgba(99,102,241,0.3);
+    --ai-bg:         #161628;
+    --ai-border:     rgba(255,255,255,0.055);
+    --sources-bg:    #111120;
+    --modal-bg:      #111120;
+    --modal-border:  rgba(255,255,255,0.07);
+    --scrollbar:     rgba(255,255,255,0.08);
+    --scrollbar-h:   rgba(255,255,255,0.15);
+    --send-from:     #22d3ee;
+    --send-to:       #6366f1;
+    --send-shadow:   rgba(34,211,238,0.25);
+    --welcome-card:  #161628;
+    --prompt-hover:  #1b1b30;
+}
+
+/* ══════════════════════════════
+   LIGHT MODE – Gradient Glass Aesthetic
+══════════════════════════════ */
+[data-theme="light"] {
+    /* Base – soft gradient background */
+    --bg-gradient:   linear-gradient(135deg, #f8fafc, #eef2ff, #fdf4ff);
+    --void:          #f8fafc;
+    --obsidian:      #f2f5f9;
+    --deep:          #eef1f7;
+    --surface:       #ffffff;
+    --raised:        #fafcff;
+    --card:          #f5f8fe;
+    --hover:         #eef2fa;
+
+    /* Glass card effect */
+    --glass-bg:      rgba(255, 255, 255, 0.75);
+
+    /* Borders */
+    --line:          #e2e8f0;
+    --line-focus:    #6366f1;
+
+    /* Sidebar & Topbar – frosted glass */
+    --sidebar-bg:    rgba(255, 255, 255, 0.85);
+    --topbar-bg:     rgba(250, 251, 255, 0.8);
+
+    /* Input */
+    --input-bg:      #ffffff;
+    --input-border:  #e2e8f0;
+    --input-focus:   #6366f1;
+    --input-shadow:  rgba(99, 102, 241, 0.15);
+
+    /* Accents */
+    --cyan:          #2563eb;
+    --cyan-dim:      rgba(37, 99, 235, 0.06);
+    --indigo:        #6366f1;
+    --indigo-dim:    rgba(99, 102, 241, 0.06);
+    --violet:        #7c3aed;
+
+    /* Text */
+    --t1:            #0f172a;
+    --t2:            #64748b;
+    --t3:            #94a3b8;
+
+    /* Status */
+    --green:         #16a34a;
+    --red:           #dc2626;
+
+    /* Messages */
+    --user-from:     #6366f1;
+    --user-to:       #8b5cf6;
+    --user-shadow:   rgba(99, 102, 241, 0.2);
+    --ai-bg:         #ffffff;
+    --ai-border:     #e2e8f0;
+    --sources-bg:    #f8fafc;
+
+    /* Modal */
+    --modal-bg:      #ffffff;
+    --modal-border:  #e2e8f0;
+
+    /* Scrollbar */
+    --scrollbar:     #cbd5e1;
+    --scrollbar-h:   #94a3b8;
+
+    /* Send button */
+    --send-from:     #6366f1;
+    --send-to:       #8b5cf6;
+    --send-shadow:   rgba(99, 102, 241, 0.25);
+
+    /* Welcome cards */
+    --welcome-card:  #ffffff;
+    --prompt-hover:  #eef2ff;
+
+    /* Shadows */
+    --shadow-sm:     0 2px 8px rgba(0,0,0,0.05);
+    --shadow-md:     0 8px 25px rgba(0,0,0,0.08);
+}
+
+/* ══════════════════════════════
+   SCROLLBAR
+══════════════════════════════ */
+::-webkit-scrollbar-thumb { background: var(--scrollbar) !important; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-h) !important; }
+
+/* ══════════════════════════════
+   GLOBAL SMOOTH TRANSITIONS
+══════════════════════════════ */
+* {
+    transition: background-color 0.25s ease, border-color 0.25s ease,
+                color 0.25s ease, box-shadow 0.25s ease;
+}
+
+body { background: var(--void) !important; color: var(--t1) !important; }
+#app { background: var(--void) !important; }
+.main-content { background: var(--obsidian) !important; }
+
+/* ══════════════════════════════
+   SIDEBAR
+══════════════════════════════ */
+.sidebar {
+    background: var(--sidebar-bg) !important;
+    border-right: 1px solid var(--line) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+.sidebar-logo { border-bottom-color: var(--line) !important; }
+.sidebar-footer { border-top-color: var(--line) !important; }
+.sidebar-divider { background: var(--line) !important; }
+
+.logo-ask   { color: var(--t1) !important; }
+.logo-docs  { color: var(--indigo) !important; }
+.logo-badge { color: var(--indigo) !important; background: var(--indigo-dim) !important; border-color: rgba(99,102,241,0.15) !important; }
+.logo-gem   { background: linear-gradient(135deg, var(--cyan-dim), var(--indigo-dim)) !important; border-color: rgba(99,102,241,0.15) !important; }
+
+.sidebar-label  { color: var(--t3) !important; font-weight: 600; letter-spacing: 0.5px; }
+.sidebar-count  { color: var(--indigo) !important; background: var(--indigo-dim) !important; }
+.sidebar-empty  { color: var(--t3) !important; }
+
+.btn-upload {
+    color: var(--indigo) !important;
+    background: var(--indigo-dim) !important;
+    border-color: rgba(99,102,241,0.15) !important;
+}
+.btn-upload:hover {
+    background: rgba(99,102,241,0.12) !important;
+    border-color: var(--indigo) !important;
+    box-shadow: var(--shadow-sm) !important;
+    transform: translateY(-1px);
+}
+
+.doc-item,
+.history-item {
+    border-radius: 10px;
+    margin-bottom: 2px;
+}
+.doc-item:hover,
+.history-item:hover {
+    background: var(--hover) !important;
+}
+.doc-item-name    { color: var(--t1) !important; font-weight: 500; }
+.doc-item-size    { color: var(--t3) !important; }
+.history-item-text { color: var(--t2) !important; }
+.username         { color: var(--t1) !important; font-weight: 500; }
+.user-role        { color: var(--t3) !important; }
+
+/* ══════════════════════════════
+   TOPBAR
+══════════════════════════════ */
+.topbar {
+    background: var(--topbar-bg) !important;
+    border-bottom: 1px solid var(--line) !important;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+.topbar-pill {
+    background: var(--indigo-dim) !important;
+    border-color: rgba(99,102,241,0.15) !important;
+    color: var(--indigo) !important;
+    font-weight: 500;
+}
+.topbar-status {
+    color: var(--green) !important;
+}
+.status-ring {
+    background: var(--green) !important;
+    box-shadow: 0 0 6px var(--green);
+}
+.menu-toggle { color: var(--t2) !important; }
+
+/* ══════════════════════════════
+   WELCOME SCREEN (Hero)
+══════════════════════════════ */
+[data-theme="light"] .main-content::before {
+    /* animated gradient background */
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(-45deg, #f8fafc, #eef2ff, #fdf4ff, #ecfeff);
+    background-size: 400% 400%;
+    animation: gradientMove 12s ease infinite;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.welcome-heading { color: var(--t1) !important; font-weight: 700; }
+.welcome-subtext  { color: var(--t2) !important; }
+
+/* Glass card effect for welcome content */
+.welcome-screen {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 24px;
+    padding: 40px;
+    margin: 20px;
+    box-shadow: var(--shadow-md);
+    border: 1px solid rgba(255,255,255,0.5);
+}
+
+.prompt-card {
+    background: var(--welcome-card) !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 14px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.2s cubic-bezier(0.2,0,0,1);
+}
+.prompt-card:hover {
+    background: var(--prompt-hover) !important;
+    border-color: var(--indigo) !important;
+    box-shadow: var(--shadow-md), 0 0 0 1px rgba(99,102,241,0.1) !important;
+    transform: translateY(-2px);
+}
+.prompt-card span       { color: var(--t2) !important; font-weight: 500; }
+.prompt-card:hover span { color: var(--indigo) !important; }
+
+/* Hero orb (center icon) */
+.hero-orb-inner {
+    background: radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%) !important;
+    border-color: rgba(99,102,241,0.2) !important;
+}
+
+/* ══════════════════════════════
+   MESSAGES
+══════════════════════════════ */
+.message.user .message-text {
+    background: linear-gradient(135deg, var(--user-from), var(--user-to)) !important;
+    box-shadow: 0 6px 18px var(--user-shadow) !important;
+    color: #fff !important;
+}
+.message.ai .message-text {
+    background: var(--ai-bg) !important;
+    border: 1px solid var(--ai-border) !important;
+    color: var(--t1) !important;
+    box-shadow: var(--shadow-sm);
+}
+.message-sources {
+    background: var(--sources-bg) !important;
+    border: 1px solid var(--line) !important;
+}
+.source-item  { border-bottom-color: var(--line) !important; color: var(--t3) !important; }
+.source-item span { color: var(--t2) !important; font-weight: 500; }
+.message-time { color: var(--t3) !important; }
+.typing-bubble {
+    background: var(--ai-bg) !important;
+    border: 1px solid var(--ai-border) !important;
+}
+
+/* ══════════════════════════════
+   INPUT ZONE
+══════════════════════════════ */
+.input-zone {
+    background: var(--topbar-bg) !important;
+    border-top: 1px solid var(--line) !important;
+    backdrop-filter: blur(12px);
+}
+.input-shell {
+    background: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    border-radius: 20px;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(4px);
+}
+.input-shell:focus-within {
+    border-color: var(--input-focus) !important;
+    box-shadow: 0 0 0 3px var(--input-shadow), 0 4px 20px rgba(99,102,241,0.08) !important;
+}
+.input-shell textarea        { color: var(--t1) !important; }
+.input-shell textarea::placeholder { color: var(--t3) !important; }
+.send-btn {
+    background: linear-gradient(135deg, var(--send-from), var(--send-to)) !important;
+    box-shadow: 0 4px 14px var(--send-shadow) !important;
+    border-radius: 12px;
+}
+.send-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 18px var(--send-shadow) !important;
+}
+.input-footnote { color: var(--t3) !important; }
+
+/* ══════════════════════════════
+   MODAL
+══════════════════════════════ */
+.modal {
+    background: var(--modal-bg) !important;
+    border: 1px solid var(--modal-border) !important;
+    box-shadow: var(--shadow-md);
+}
+.modal-top { border-bottom-color: var(--line) !important; }
+.modal-actions {
+    border-top-color: var(--line) !important;
+    background: var(--raised) !important;
+}
+.modal-heading { color: var(--t1) !important; }
+.modal-sub     { color: var(--t3) !important; }
+.modal-icon-wrap {
+    background: var(--indigo-dim) !important;
+    border-color: rgba(99,102,241,0.15) !important;
+    color: var(--indigo) !important;
+}
+.modal-x { border-color: var(--line) !important; color: var(--t3) !important; }
+.modal-x:hover { background: var(--hover) !important; color: var(--t1) !important; }
+
+.dropzone {
+    border-color: var(--line) !important;
+    background: rgba(99,102,241,0.02) !important;
+}
+.dropzone:hover {
+    border-color: var(--indigo) !important;
+    background: rgba(99,102,241,0.04) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+.dropzone-visual { background: var(--raised) !important; border-color: var(--line) !important; color: var(--t3) !important; }
+.dropzone-text   { color: var(--t2) !important; }
+.dropzone-text span { color: var(--indigo) !important; }
+
+.file-card  { background: var(--raised) !important; border-color: var(--line) !important; }
+.file-name  { color: var(--t1) !important; }
+.file-size  { color: var(--t3) !important; }
+
+.field-group label { color: var(--t3) !important; font-weight: 500; }
+.field-input {
+    background: var(--raised) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--t1) !important;
+}
+.field-input:focus { border-color: var(--input-focus) !important; box-shadow: 0 0 0 3px var(--input-shadow) !important; }
+
+.progress-track { background: var(--raised) !important; border-color: var(--line) !important; }
+.progress-step  { color: var(--t3) !important; }
+.progress-step.active { color: var(--indigo) !important; }
+.progress-step.done   { color: var(--green) !important; }
+.step-bullet    { background: var(--surface) !important; border-color: var(--line) !important; }
+
+.btn-cancel { border-color: var(--line) !important; color: var(--t2) !important; }
+.btn-cancel:hover { background: var(--hover) !important; color: var(--t1) !important; }
+.btn-confirm { background: linear-gradient(135deg, var(--indigo), var(--violet)) !important; }
+
+/* ══════════════════════════════
+   THEME TOGGLE BUTTON
+══════════════════════════════ */
+.theme-toggle {
+    width: 34px;
+    height: 34px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.theme-toggle:hover {
+    border-color: var(--indigo) !important;
+    background: var(--indigo-dim) !important;
+}
+
+.icon-sun  {
+    position: absolute;
+    color: #fbbf24;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+}
+.icon-moon {
+    position: absolute;
+    color: var(--indigo);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    transform: scale(0) rotate(90deg);
+    opacity: 0;
+}
+[data-theme="light"] .icon-sun  { transform: scale(0) rotate(-90deg); opacity: 0; }
+[data-theme="light"] .icon-moon { transform: scale(1) rotate(0deg); opacity: 1; }
+======================================================================
 FILE: static\frontend\js\app.js
 ======================================================================
 // ── Auth Guard ─────────────────────────────────
@@ -4646,17 +5267,27 @@ async function loadDocuments() {
         }
 
         docList.innerHTML = docs.map(doc => `
-            <div class="doc-item" title="${escapeHtml(doc.title)}">
-                <span class="doc-item-icon">📄</span>
-                <div>
-                    <div class="doc-item-name">${escapeHtml(doc.title)}</div>
-                    <div class="doc-item-size">
-                        ${formatFileSize(doc.file_size)} ·
-                        ${doc.is_processed ? '✅ Ready' : '⏳ Processing'}
-                    </div>
-                </div>
+    <div class="doc-item" title="${escapeHtml(doc.title)}" id="doc-${doc.id}">
+        <span class="doc-item-icon">📄</span>
+        <div class="doc-item-info">
+            <div class="doc-item-name">${escapeHtml(doc.title)}</div>
+            <div class="doc-item-size">
+                ${formatFileSize(doc.file_size)} ·
+                ${doc.is_processed ? '✅ Ready' : '⏳ Processing'}
             </div>
-        `).join('');
+        </div>
+        <button
+            class="doc-delete-btn"
+            onclick="deleteDocument(${doc.id}, '${escapeHtml(doc.title)}')"
+            title="Delete document"
+        >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor"
+                      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </div>
+`).join('');
 
     } catch (error) {
         console.error('Failed to load documents:', error);
@@ -5023,7 +5654,7 @@ async function uploadDocument() {
             uploadBtn.textContent = 'Try Again';
         }
 
-        } catch (error) {
+    } catch (error) {
         const errorEl = document.getElementById('uploadError');
         errorEl.textContent = 'Cannot connect to server. Make sure Django is running.';
         errorEl.classList.add('show');
@@ -5105,6 +5736,51 @@ if (dropZone) {
         document.getElementById('fileInfo').style.display = 'flex';
         document.getElementById('titleGroup').style.display = 'block';
     });
+}
+
+// ── Delete Document ────────────────────────────
+async function deleteDocument(docId, docTitle) {
+    // Ask for confirmation first
+    if (!confirm(`Delete "${docTitle}"?\n\nThis will permanently remove the document and all its data.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/documents/${docId}/`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+            }
+        });
+
+        if (response.ok || response.status === 204) {
+            // Remove from sidebar immediately
+            const el = document.getElementById(`doc-${docId}`);
+            if (el) {
+                el.style.transition = 'all 0.3s ease';
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-10px)';
+                setTimeout(() => {
+                    el.remove();
+                    // Update doc count
+                    const remaining = document.querySelectorAll('.doc-item').length;
+                    const countEl = document.getElementById('docCount');
+                    if (countEl) countEl.textContent = remaining;
+                    // Show empty state if no docs left
+                    if (remaining === 0) {
+                        document.getElementById('docList').innerHTML =
+                            '<div class="sidebar-empty"><p>No documents yet</p></div>';
+                    }
+                }, 300);
+            }
+            console.log(`Deleted: ${docTitle}`);
+        } else {
+            alert('Failed to delete document. Please try again.');
+        }
+
+    } catch (error) {
+        alert('Cannot connect to server.');
+    }
 }
 ======================================================================
 FILE: static\frontend\js\auth.js
@@ -5254,6 +5930,49 @@ document.addEventListener('keydown', function(e) {
         if (registerBtn) handleRegister();
     }
 });
+======================================================================
+FILE: static\frontend\js\theme.js
+======================================================================
+/* ═══════════════════════════════════════════════
+   AskDocs AI — Theme Toggle
+   Saves preference to localStorage
+   Applies on page load instantly (no flash)
+═══════════════════════════════════════════════ */
+
+(function () {
+    // Apply saved theme immediately on load
+    // This runs before the page renders to prevent flash
+    const saved = localStorage.getItem('askdocs_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+})();
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+
+    // Apply theme
+    html.setAttribute('data-theme', next);
+
+    // Save preference
+    localStorage.setItem('askdocs_theme', next);
+
+    // Update canvas dot color if canvas exists
+    updateCanvasDots(next);
+
+    console.log(`Theme switched to: ${next}`);
+}
+
+function updateCanvasDots(theme) {
+    // The canvas animation reads CSS variables
+    // We just need to signal it to refresh
+    const canvas = document.getElementById('bgCanvas');
+    if (canvas) {
+        // Dispatch custom event so canvas can update
+        canvas.dispatchEvent(new CustomEvent('themechange', { detail: { theme } }));
+    }
+}
+
 ======================================================================
 FILE: users\admin.py
 ======================================================================
